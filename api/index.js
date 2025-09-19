@@ -9,6 +9,7 @@ const imageDownloader = require('image-downloader');
 const multer = require('multer');
 const upload = multer({dest: 'uploads/'});
 const fs = require('fs');
+const Place = require('./models/Place');
 
 require('dotenv').config();
 app.use(express.json());
@@ -41,7 +42,11 @@ app.post('/register', async (req, res) => {
 
   res.json(userDoc);
   } catch(e) {
-    res.status(422).json(e);
+    if (e.code === 11000){
+      res.status(422).json('Email is already registered');
+    } else {
+      res.status(500).json('Internal server error');
+    }
   }
 });
 
@@ -104,6 +109,28 @@ app.post('/upload', upload.array('photos', 50), (req, res) => {
     uploadedFiles.push(newPath.replace('uploads/', ''));
   }
   res.json(uploadedFiles);
+});
+
+app.post('/places', (req, res) => {
+  const {token} = req.cookies;
+  const {
+    title, address, addedPhotos, 
+    description, perks, extraInfo, 
+    checkIn, checkOut, maxGuests
+  } = req.body;
+  if (!token) {
+    return res.status(401).json('not logged in');
+  }
+  jwt.verify(token, jwtSecret, {}, async (err, userData) => {
+    if (err) throw err;
+    const placeDoc = await Place.create({
+      owner: userData.id,
+      title, address, addedPhotos, 
+      description, perks, extraInfo, 
+      checkIn, checkOut, maxGuests
+    });
+    res.json(placeDoc);
+  });
 });
 
 app.listen(4000);
