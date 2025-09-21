@@ -10,6 +10,7 @@ const multer = require('multer');
 const upload = multer({dest: 'uploads/'});
 const fs = require('fs');
 const Place = require('./models/Place');
+const Booking = require('./models/Booking');
 
 require('dotenv').config();
 app.use(express.json());
@@ -26,21 +27,36 @@ app.use(cors({
 
 mongoose.connect(process.env.MONGO_URL);
 
+function getUserDataFromReq(req) {
+  return new Promise((resolve, reject) => {
+    const token = req.cookies.token;
+    if (!token) {
+      return resolve(null);
+    }
+    jwt.verify(token, jwtSecret, {}, async (err, userData) => {
+      if (err) return reject(err);
+      resolve(userData);
+    });
+  });
+}
+
+
 app.get('/test', (req, res) => {
   res.json('test ok');
 });
 
 app.post('/register', async (req, res) => {
   const {name, email, password} = req.body;
+  const normalizedEmail = email.trim().toLowerCase();
 
   try{
     const userDoc = await User.create({
-    name,
-    email,
-    password: bcrypt.hashSync(password, bcrypt.genSaltSync(10))
-  });
+      name,
+      email: normalizedEmail,
+      password: bcrypt.hashSync(password, bcrypt.genSaltSync(10))
+    });
 
-  res.json(userDoc);
+    res.json(userDoc);
   } catch(e) {
     if (e.code === 11000){
       res.status(422).json('Email is already registered');
@@ -50,33 +66,44 @@ app.post('/register', async (req, res) => {
   }
 });
 
-app.post('/login', async (req,res) => {
-  const {email,password} = req.body;
-  const userDoc = await User.findOne({email});
-  if (userDoc) {
-    const passOk = bcrypt.compareSync(password, userDoc.password);
-    if (passOk) {
-        jwt.sign({
-          email: userDoc.email, 
-          id: userDoc._id}, 
-          jwtSecret, {}, (err, token) => {
-          if (err) throw err;
-          res.cookie('token', token).json(userDoc);
-        });
-    } else {
-      res.status(422).json('pass not ok');
-    } 
-  } else {
-    res.json('not found');
+app.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const userDoc = await User.findOne({ email: normalizedEmail });
+  if (!userDoc) {
+    return res.status(401).json({ error: "Invalid email or password" });
   }
+
+  const passOk = bcrypt.compareSync(password, userDoc.password);
+  if (!passOk) {
+    return res.status(401).json({ error: "Invalid email or password" });
+  }
+
+  jwt.sign(
+    { email: userDoc.email, id: userDoc._id },
+    jwtSecret,
+    {},
+    (err, token) => {
+      if (err) throw err;
+      res.cookie("token", token).json(userDoc);
+    }
+  );
 });
+
 
 app.get('/profile', (req,res) => {
   const {token} = req.cookies;
   if (token) {
     jwt.verify(token, jwtSecret, {}, async (err, userData) => {
-      if (err) throw err;
-      const {name, email, _id} = await User.findById(userData.id);
+      if (err) {
+        return res.status(401).json('invalid token');
+      }
+      const user = await User.findById(userData.id);
+      if (!user) {
+        return res.status(404).json('user not found');
+      }
+      const {name, email, _id} = user;
       res.json({name, email, _id});
     });
   } else {
@@ -116,22 +143,83 @@ app.post('/places', (req, res) => {
   const {
     title, address, addedPhotos, 
     description, perks, extraInfo, 
-    checkIn, checkOut, maxGuests
+    checkIn, checkOut, maxGuests, price
   } = req.body;
   if (!token) {
     return res.status(401).json('not logged in');
   }
   jwt.verify(token, jwtSecret, {}, async (err, userData) => {
-    if (err) throw err;
+    if (err) return res.status(401).json('invalid token');
     const placeDoc = await Place.create({
       owner: userData.id,
-      title, address, addedPhotos, 
+      title, address, photos:addedPhotos, 
       description, perks, extraInfo, 
-      checkIn, checkOut, maxGuests
+      checkIn, checkOut, maxGuests, price
     });
     res.json(placeDoc);
   });
 });
 
-app.listen(4000);
+app.get('/places', (req, res) => {
+  const {token} = req.cookies;
+  jwt.verify(token, jwtSecret, {}, async (err, userData) => {
+    if (err) return res.status(401).json('invalid token');
+    const {id} = userData;
+    res.json(await Place.find({owner:id}));
+  })
+})
 
+app.get('/places/:id', async (req, res) => {
+  const {id} = req.params;
+  res.json(await Place.findById(id));
+})
+
+app.put('/places/', async (req,res) => {
+  const {token} = req.cookies;
+  const {
+    id, title, address, addedPhotos, 
+    description, perks, extraInfo, 
+    checkIn, checkOut, maxGuests, price
+  } = req.body;
+  
+  jwt.verify(token, jwtSecret, {}, async (err, userData) => {
+    if (err) return res.status(401).json('invalid token');
+    const placeDoc = await Place.findById(id);
+    if (userData.id === placeDoc.owner.toString()){
+      placeDoc.set({
+        title, address, photos:addedPhotos, 
+        description, perks, extraInfo, 
+        checkIn, checkOut, maxGuests, price
+      });
+      await placeDoc.save();
+      res.json('ok');
+    }
+  });
+});
+
+app.get('/places', async (req,res) => {
+  res.json(await Place.find());
+});
+
+app.post('/bookings', async (req, res) => {
+  const userData = await getUserDataFromReq(req);
+  const {place, checkIn, checkOut, 
+    numberOfGuests, name, phone, price} = req.body;
+  Booking.create({
+    place, checkIn, checkOut, 
+    numberOfGuests, name, phone, price,
+    user:userData.id,
+  }).then((doc) => {
+    res.json(doc);
+  }).catch((err) => {
+    console.error(err);
+    res.status(500).json('Server error during booking creation');
+  });
+});
+
+app.get('/bookings', async (req,res) => {
+  const userData = await getUserDataFromReq(req);
+  res.json(await Booking.find({user:userData.id}).populate('place'));
+});
+
+app.listen(4000);

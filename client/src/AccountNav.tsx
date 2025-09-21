@@ -1,59 +1,23 @@
-import { useContext, useState } from "react";
-import { UserContext } from "../UserContext";
-import { Link, Navigate } from "react-router-dom";
-import { useParams } from "react-router-dom";
-import axios from "axios";
-import PlacesPage from "./PlacesPage";
+import { Link, useLocation } from "react-router-dom";
 
-export default function AccountPage() {
-  const [redirect, setRedirect] = useState<string | null>(null);
-  const context = useContext(UserContext);
-  let {subpage} = useParams();
-  if (subpage === undefined) {
-    subpage = 'profile';
-  }
-
-  if (!context) {
-    return null;
-  }
-  const { ready, user, setUser } = context;
-
-  async function logout() {
-    await axios.post('/logout');
-    setRedirect('/');
-    setUser(null);
-  }
-
-  if (!ready) {
-    return <div>Loading...</div>;
-  }
-
-  if (ready && !user && !redirect) {
-    return <Navigate to={'/login'} />
-  }
-
-  if (!user) {
-    return (
-      <div>Loading...</div>
-    );
-  }
-
-  function linkClasses(type: string | undefined) {
-    let classes = 'inline-flex gap-1 py-2 px-6 rounded-full';
-    if (type === subpage) {
-      classes += ' bg-primary text-white';
-    } else {
-        classes += ' bg-gray-200';
+export default function AccountNav() {
+    const {pathname} = useLocation();
+    let subpage = pathname.split('/')?.[2];
+    if (subpage === undefined){
+        subpage = 'profile';
     }
-    return classes;
-  }
+    
+    function linkClasses(type: string | undefined) { 
+        let classes = 'inline-flex gap-1 py-2 px-6 rounded-full';
+        if (type === subpage) {
+        classes += ' bg-primary text-white';
+        } else {
+            classes += ' bg-gray-200';
+        }
+        return classes;
+    }
 
-  if (redirect) {
-    return <Navigate to={redirect} />;
-  }
-
-  return (
-    <div>
+    return (
         <nav className="w-full flex justify-center mt-8 gap-2">
             <Link className={linkClasses('profile')} to={'/account'}>
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">
@@ -74,15 +38,5 @@ export default function AccountPage() {
                 My accommodations
             </Link>
         </nav>
-        {subpage === 'profile' && (
-          <div className="text-center max-w-lg mx-auto mt-8">
-            Logged in as {user.name} ({user.email})<br />
-            <button onClick={logout} className="primary max-w-sm mt-2">Logout</button>
-          </div>
-        )}
-        {subpage === 'places' && (
-          <PlacesPage />
-        )}
-    </div>
-  );
+    )
 }

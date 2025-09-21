@@ -1,6 +1,5 @@
 import { Link, Navigate } from "react-router-dom"
-import axios from "axios";
-
+import axios from "axios"
 import { useContext, useState } from "react";
 import { UserContext } from "../UserContext";
 import type { FormEvent } from "react";
@@ -30,6 +29,7 @@ export default function LoginPage() {
     if (redirect) {
         return <Navigate to={'/'} />
     }
+
     return (
         <div className="mt-4 grow flex items-center justify-around">
             <div className="mb-64">

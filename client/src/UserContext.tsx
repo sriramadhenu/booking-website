@@ -28,7 +28,7 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
       axios.get('/profile').then(({data}) => {
         setUser(data);
         setReady(true);
-      });
+      }).catch(() => setReady(true));
     }
   }, []);
   return (
